@@ -43,11 +43,11 @@ export class GeminiService {
             const projectRoot = process.cwd();
 
             // Load main prompt
-            const mainPromptPath = path.join(projectRoot, '..', 'prompt.txt');
+            const mainPromptPath = path.join(projectRoot, 'configs', 'prompt.txt');
             this.mainPrompt = await fs.readFile(mainPromptPath, 'utf-8');
 
             // Load evaluator prompt
-            const evaluatorPromptPath = path.join(projectRoot, '..', 'evaluator_prompt.txt');
+            const evaluatorPromptPath = path.join(projectRoot, 'configs', 'evaluator_prompt.txt');
             this.evaluatorPrompt = await fs.readFile(evaluatorPromptPath, 'utf-8');
 
             return true;
