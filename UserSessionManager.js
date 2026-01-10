@@ -200,6 +200,14 @@ export class UserSessionManager {
     }
 
     /**
+     * Mark buffer as complete (force stop)
+     */
+    markBufferComplete(userId) {
+        const session = this.getSession(userId);
+        session.buffer.isComplete = true;
+    }
+
+    /**
      * Set typing state
      */
     setTypingState(userId, isTyping) {

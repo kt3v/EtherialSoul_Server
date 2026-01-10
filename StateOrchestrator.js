@@ -277,6 +277,12 @@ export class StateOrchestrator {
     _handleBufferComplete(userId) {
         console.log('\n✅ All blocks sent');
 
+        // Notify client that AI has completed
+        const socket = this.getSocket(userId);
+        if (socket) {
+            socket.emit('ai_complete');
+        }
+
         // Check if UpdateCheck indicated update needed
         const updateCheckState = this.sessionManager.getUpdateCheckState(userId);
 
@@ -301,6 +307,29 @@ export class StateOrchestrator {
                 console.log('   └─ ⏭️  Skipping EndUpdate timer (no user messages since last EndUpdate)\n');
             }
         }
+    }
+
+    /**
+     * Stop AI response (user requested)
+     */
+    stopAIResponse(userId, socket) {
+        console.log('   ├─ 🛑 Stopping AI response...');
+
+        // Cancel all timers
+        this.timerManager.cancelAllTimers(userId);
+
+        // Stop buffer sending
+        this.bufferManager.stopSending(userId);
+
+        // Mark buffer as complete to prevent further sending
+        this.sessionManager.markBufferComplete(userId);
+
+        // Notify client that AI has stopped
+        if (socket) {
+            socket.emit('ai_complete');
+        }
+
+        console.log('   └─ ✅ AI response stopped\n');
     }
 
     /**

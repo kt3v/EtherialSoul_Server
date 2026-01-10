@@ -128,6 +128,19 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Handle stop AI response request
+    socket.on('stop_ai_response', async (data) => {
+        try {
+            console.log(`\n🛑 STOP REQUEST [${userId.substring(0, 8)}]`);
+
+            // Handle through orchestrator
+            orchestrator.stopAIResponse(userId, socket);
+
+        } catch (error) {
+            console.error('❌ Error stopping AI response:', error.message);
+        }
+    });
+
     socket.on('disconnect', () => {
         console.log(`✗ Client disconnected: ${socket.id}`);
 
