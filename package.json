@@ -6,7 +6,9 @@
     "type": "module",
     "scripts": {
         "start": "node index.js",
-        "dev": "nodemon index.js"
+        "dev": "nodemon index.js",
+        "build": "echo 'No build step required for Node.js server'",
+        "prod": "NODE_ENV=production node index.js"
     },
     "keywords": [
         "ai",
@@ -17,9 +19,11 @@
     "license": "MIT",
     "dependencies": {
         "@google/generative-ai": "^0.21.0",
+        "@supabase/supabase-js": "^2.90.1",
         "cors": "^2.8.5",
         "dotenv": "^16.4.5",
         "express": "^4.21.2",
+        "jsonwebtoken": "^9.0.3",
         "socket.io": "^4.8.1"
     },
     "devDependencies": {

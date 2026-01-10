@@ -8,6 +8,7 @@ import { BufferManager } from './BufferManager.js';
 import { TimerManager } from './TimerManager.js';
 import { GeminiService } from './GeminiService.js';
 import { StateOrchestrator } from './StateOrchestrator.js';
+import { socketAuthMiddleware } from './authMiddleware.js';
 
 dotenv.config();
 
@@ -19,6 +20,8 @@ const io = new Server(httpServer, {
         methods: ['GET', 'POST']
     }
 });
+
+io.use(socketAuthMiddleware);
 
 const PORT = process.env.PORT || 3000;
 
@@ -78,7 +81,14 @@ app.get('/health', (req, res) => {
 // WebSocket connection handling
 io.on('connection', (socket) => {
     // Extract userId from handshake or generate one
-    const userId = socket.handshake.query.userId || socket.id;
+    const userId = socket.user?.id || socket.handshake.query.userId || socket.id;
+    
+    console.log(`\n🔌 Client connected: ${socket.id}`);
+    if (socket.authenticated && socket.user) {
+        console.log(`   👤 Authenticated as: ${socket.user.email}`);
+    } else {
+        console.log(`   👤 Anonymous user`);
+    }
 
     if (!orchestrator) {
         socket.emit('error', {
