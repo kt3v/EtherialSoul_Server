@@ -9,6 +9,7 @@ import { TimerManager } from './managers/TimerManager.js';
 import { GeminiService } from './services/GeminiService.js';
 import { StateOrchestrator } from './managers/StateOrchestrator.js';
 import { socketAuthMiddleware } from './middleware/authMiddleware.js';
+import { clearTxtLogs } from './utils/logsCleanup.js';
 
 dotenv.config();
 
@@ -175,6 +176,13 @@ io.on('connection', (socket) => {
 
 // Start server
 async function startServer() {
+    try {
+        const { deleted } = await clearTxtLogs();
+        if (deleted > 0) console.log(`🧹 Cleared ${deleted} .txt file(s) from logs/`);
+    } catch (error) {
+        console.warn('⚠️  Failed to clear logs folder:', error?.message || error);
+    }
+
     const servicesReady = await initializeServices();
 
     httpServer.listen(PORT, () => {
