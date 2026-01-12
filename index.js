@@ -80,12 +80,13 @@ app.get('/health', (req, res) => {
 
 // WebSocket connection handling
 io.on('connection', (socket) => {
-    // Extract userId from handshake or generate one
-    const userId = socket.user?.id || socket.handshake.query.userId || socket.id;
+    // Use socket.id as the unique identifier for this connection
+    const userId = socket.id;
     
     console.log(`\n🔌 Client connected: ${socket.id}`);
     if (socket.authenticated && socket.user) {
         console.log(`   👤 Authenticated as: ${socket.user.email}`);
+        console.log(`   🆔 User DB ID: ${socket.user.id}`);
     } else {
         console.log(`   👤 Anonymous user`);
     }
@@ -97,10 +98,13 @@ io.on('connection', (socket) => {
         return;
     }
 
+    // Register socket with orchestrator immediately
+    orchestrator.registerSocket(userId, socket);
+
     // Handle incoming messages from client
     socket.on('user_message', async (data) => {
         try {
-            const { message, userId } = data;
+            const { message } = data;
             console.log(`\n💬 USER [${userId.substring(0, 8)}]: "${message}"`);
 
             // Echo user message back to confirm receipt
@@ -111,7 +115,7 @@ io.on('connection', (socket) => {
                 timestamp: new Date().toISOString()
             });
 
-            // Handle through orchestrator
+            // Handle through orchestrator (use socket.id as userId)
             await orchestrator.handleUserMessage(userId, message, socket);
 
         } catch (error) {
@@ -126,11 +130,11 @@ io.on('connection', (socket) => {
     // Handle typing status
     socket.on('typing_status', async (data) => {
         try {
-            const { userId, isTyping } = data;
+            const { isTyping } = data;
             const status = isTyping ? '⌨️  typing...' : '⏸️  stopped typing';
             console.log(`${status} [${userId.substring(0, 8)}]`);
 
-            // Handle through orchestrator
+            // Handle through orchestrator (use socket.id as userId)
             await orchestrator.handleTypingStatus(userId, isTyping, socket);
 
         } catch (error) {
@@ -141,10 +145,9 @@ io.on('connection', (socket) => {
     // Handle stop AI response request
     socket.on('stop_ai_response', async (data) => {
         try {
-            const { userId } = data;
             console.log(`\n🛑 STOP REQUEST [${userId.substring(0, 8)}]`);
 
-            // Handle through orchestrator
+            // Handle through orchestrator (use socket.id as userId)
             orchestrator.stopAIResponse(userId, socket);
 
         } catch (error) {
@@ -153,12 +156,20 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        console.log(`✗ Client disconnected: ${socket.id}`);
+        console.log(`\n✗ Client disconnected: ${socket.id}`);
+        console.log(`   🧹 Cleaning up session for user: ${userId.substring(0, 8)}`);
 
-        // Clean up user state
+        // Clean up all user state
         if (orchestrator) {
             orchestrator.cleanup(userId);
         }
+        
+        console.log(`   ✅ Cleanup complete\n`);
+    });
+
+    // Handle error events
+    socket.on('error', (error) => {
+        console.error(`❌ Socket error for ${userId.substring(0, 8)}:`, error.message);
     });
 });
 

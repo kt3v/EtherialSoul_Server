@@ -21,13 +21,27 @@ export class StateOrchestrator {
     }
 
     /**
-     * Get socket for user
+     * Get socket for user (with connection validation)
      */
     getSocket(userId) {
         const socket = this.userSockets.get(userId);
-        console.log(`🔍 Looking for socket for ${userId}:`, socket ? 'found' : 'not found');
-        console.log(`📋 Registered users:`, Array.from(this.userSockets.keys()));
+        
+        // Validate socket is still connected
+        if (socket && !socket.connected) {
+            console.log(`⚠️  Socket for ${userId.substring(0, 8)} is disconnected, removing...`);
+            this.userSockets.delete(userId);
+            return null;
+        }
+        
         return socket;
+    }
+
+    /**
+     * Check if user has active socket
+     */
+    hasActiveSocket(userId) {
+        const socket = this.userSockets.get(userId);
+        return socket && socket.connected;
     }
 
     /**
@@ -339,9 +353,18 @@ export class StateOrchestrator {
      * Clean up for user (on disconnect)
      */
     cleanup(userId) {
+        console.log(`   ├─ 🧹 Cleaning timers...`);
         this.timerManager.cleanup(userId);
+        
+        console.log(`   ├─ 🧹 Stopping buffer sending...`);
         this.bufferManager.cleanup(userId);
+        
+        console.log(`   ├─ 🧹 Clearing session data...`);
         this.sessionManager.clearSession(userId);
+        
+        console.log(`   ├─ 🧹 Removing socket reference...`);
         this.userSockets.delete(userId);
+        
+        console.log(`   ├─ 📊 Active users remaining: ${this.userSockets.size}`);
     }
 }

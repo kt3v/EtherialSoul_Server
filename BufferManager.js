@@ -7,12 +7,23 @@ export class BufferManager {
         this.sessionManager = sessionManager;
         // Map of userId -> timeout ID for current block sending
         this.sendingTimeouts = new Map();
+        // Map of userId -> socket for validation
+        this.userSockets = new Map();
     }
 
     /**
      * Start sending buffer blocks for a user
      */
     async startSendingBuffer(userId, socket, onGroupComplete, onBufferComplete) {
+        // Validate socket
+        if (!socket || !socket.connected) {
+            console.log(`   └─ ❌ Cannot start sending: socket not connected`);
+            return;
+        }
+
+        // Store socket reference for validation
+        this.userSockets.set(userId, socket);
+
         // Cancel any existing sending process
         this.stopSending(userId);
 
@@ -27,6 +38,13 @@ export class BufferManager {
      * Send next block in the buffer
      */
     _sendNextBlock(userId, socket, onGroupComplete, onBufferComplete) {
+        // Validate socket is still connected
+        if (!socket || !socket.connected) {
+            console.log(`   ├─ ⚠️  Socket disconnected for ${userId.substring(0, 8)}, stopping buffer send`);
+            this.stopSending(userId);
+            return;
+        }
+
         // Check if paused
         if (this.sessionManager.isBufferPaused(userId)) {
             return;
@@ -134,5 +152,6 @@ export class BufferManager {
      */
     cleanup(userId) {
         this.stopSending(userId);
+        this.userSockets.delete(userId);
     }
 }
