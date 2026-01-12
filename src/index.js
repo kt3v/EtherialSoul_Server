@@ -3,12 +3,12 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { UserSessionManager } from './UserSessionManager.js';
-import { BufferManager } from './BufferManager.js';
-import { TimerManager } from './TimerManager.js';
-import { GeminiService } from './GeminiService.js';
-import { StateOrchestrator } from './StateOrchestrator.js';
-import { socketAuthMiddleware } from './authMiddleware.js';
+import { UserSessionManager } from './managers/UserSessionManager.js';
+import { BufferManager } from './managers/BufferManager.js';
+import { TimerManager } from './managers/TimerManager.js';
+import { GeminiService } from './services/GeminiService.js';
+import { StateOrchestrator } from './managers/StateOrchestrator.js';
+import { socketAuthMiddleware } from './middleware/authMiddleware.js';
 
 dotenv.config();
 

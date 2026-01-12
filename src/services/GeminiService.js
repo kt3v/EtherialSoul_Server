@@ -40,15 +40,13 @@ export class GeminiService {
      */
     async loadPrompts() {
         try {
-            const projectRoot = process.cwd();
-
             // Load main prompt
-            const mainPromptPath = path.join(projectRoot, 'configs', 'prompt.txt');
-            this.mainPrompt = await fs.readFile(mainPromptPath, 'utf-8');
+            const promptPath = path.join(process.cwd(), 'src', 'config', 'prompt.txt');
+            this.mainPrompt = await fs.readFile(promptPath, 'utf-8');
 
             // Load evaluator prompt
-            const evaluatorPromptPath = path.join(projectRoot, 'configs', 'evaluator_prompt.txt');
-            this.evaluatorPrompt = await fs.readFile(evaluatorPromptPath, 'utf-8');
+            const evaluatorPath = path.join(process.cwd(), 'src', 'config', 'evaluator_prompt.txt');
+            this.evaluatorPrompt = await fs.readFile(evaluatorPath, 'utf-8');
 
             return true;
         } catch (error) {
