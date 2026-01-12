@@ -100,7 +100,7 @@ io.on('connection', (socket) => {
     // Handle incoming messages from client
     socket.on('user_message', async (data) => {
         try {
-            const { message } = data;
+            const { message, userId } = data;
             console.log(`\n💬 USER [${userId.substring(0, 8)}]: "${message}"`);
 
             // Echo user message back to confirm receipt
@@ -126,7 +126,7 @@ io.on('connection', (socket) => {
     // Handle typing status
     socket.on('typing_status', async (data) => {
         try {
-            const { isTyping } = data;
+            const { userId, isTyping } = data;
             const status = isTyping ? '⌨️  typing...' : '⏸️  stopped typing';
             console.log(`${status} [${userId.substring(0, 8)}]`);
 
@@ -141,6 +141,7 @@ io.on('connection', (socket) => {
     // Handle stop AI response request
     socket.on('stop_ai_response', async (data) => {
         try {
+            const { userId } = data;
             console.log(`\n🛑 STOP REQUEST [${userId.substring(0, 8)}]`);
 
             // Handle through orchestrator

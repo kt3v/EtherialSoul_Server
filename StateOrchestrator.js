@@ -24,7 +24,10 @@ export class StateOrchestrator {
      * Get socket for user
      */
     getSocket(userId) {
-        return this.userSockets.get(userId);
+        const socket = this.userSockets.get(userId);
+        console.log(`🔍 Looking for socket for ${userId}:`, socket ? 'found' : 'not found');
+        console.log(`📋 Registered users:`, Array.from(this.userSockets.keys()));
+        return socket;
     }
 
     /**
