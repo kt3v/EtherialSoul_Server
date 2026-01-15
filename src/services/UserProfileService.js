@@ -82,11 +82,36 @@ export class UserProfileService {
     }
 
     /**
+     * Generate transit chart data for current time
+     * @param {Object} profile - User profile with birth location
+     * @returns {Object|null} Transit astrology data or null
+     */
+    generateTransitChart(profile) {
+        if (!profile || !profile.birth_latitude || !profile.birth_longitude) {
+            return null;
+        }
+
+        try {
+            // This would require the astrology calculation library on the server
+            // For now, we'll return null and rely on client-side transit data
+            // In production, you'd implement server-side transit calculation here
+            console.log('   ├─ ℹ️  Server-side transit calculation not implemented, using client data');
+            return null;
+        } catch (error) {
+            console.error('   ├─ ❌ Error generating transit chart:', error.message);
+            return null;
+        }
+    }
+
+    /**
      * Format user profile data for AI context
      * @param {Object} profile - User profile from database
+     * @param {string} questionType - 'static' or 'transit' to determine which astrology data to use
+     * @param {Object} clientNatalChart - Natal chart data from client (optional)
+     * @param {Object} clientTransitChart - Transit chart data from client (optional)
      * @returns {string} Formatted text for AI prompt
      */
-    formatProfileForAI(profile) {
+    formatProfileForAI(profile, questionType = 'static', clientNatalChart = null, clientTransitChart = null) {
         if (!profile) {
             return '';
         }
@@ -109,28 +134,49 @@ export class UserProfileService {
             formatted += `Timezone: ${profile.timezone}\n`;
         }
 
-        if (profile.astrology_data && typeof profile.astrology_data === 'object') {
-            formatted += '\n=== ASTROLOGY DATA ===\n\n';
+        // Use client-provided natal chart if available, otherwise use database data
+        const natalData = clientNatalChart || profile.astrology_data;
+        
+        if (natalData && typeof natalData === 'object') {
+            formatted += '\n=== NATAL CHART (Birth Positions) ===\n\n';
+            formatted += this._formatAstrologyData(natalData);
             
-            const planets = ['sun', 'moon', 'ascendant', 'mercury', 'venus', 'mars', 
-                           'jupiter', 'saturn', 'uranus', 'neptune', 'pluto', 'chiron'];
-            
-            planets.forEach(planet => {
-                if (profile.astrology_data[planet]) {
-                    const data = profile.astrology_data[planet];
-                    formatted += `${planet.charAt(0).toUpperCase() + planet.slice(1)}: ${data.sign}`;
-                    if (data.house) {
-                        formatted += `, House ${data.house}`;
-                    }
-                    if (data.isRetrograde) {
-                        formatted += ' (Retrograde)';
-                    }
-                    formatted += '\n';
-                }
-            });
+            // For transit questions, also include transit data
+            if (questionType === 'transit' && clientTransitChart && typeof clientTransitChart === 'object') {
+                formatted += '\n=== TRANSIT CHART (Current Positions) ===\n\n';
+                formatted += this._formatAstrologyData(clientTransitChart);
+                formatted += '\nIMPORTANT: Analyze the transit positions in relation to the natal chart.\n';
+                formatted += 'Consider aspects between transiting planets and natal planets/points.\n';
+            }
         }
 
         formatted += '\n';
+        return formatted;
+    }
+
+    /**
+     * Helper method to format astrology data
+     * @param {Object} astrologyData - Astrology data object
+     * @returns {string} Formatted astrology data
+     */
+    _formatAstrologyData(astrologyData) {
+        let formatted = '';
+        const planets = ['sun', 'moon', 'ascendant', 'mercury', 'venus', 'mars', 
+                       'jupiter', 'saturn', 'uranus', 'neptune', 'pluto', 'chiron'];
+        
+        planets.forEach(planet => {
+            if (astrologyData[planet]) {
+                const data = astrologyData[planet];
+                formatted += `${planet.charAt(0).toUpperCase() + planet.slice(1)}: ${data.sign}`;
+                if (data.house) {
+                    formatted += `, House ${data.house}`;
+                }
+                if (data.isRetrograde) {
+                    formatted += ' (Retrograde)';
+                }
+                formatted += '\n';
+            }
+        });
         return formatted;
     }
 }

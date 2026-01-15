@@ -118,12 +118,22 @@ io.on('connection', (socket) => {
     // Handle chat mode selection
     socket.on('set_chat_mode', (data) => {
         try {
-            const { mode, initialMessage } = data;
+            const { mode, initialMessage, questionType, natalChart, transitChart } = data;
             console.log(`\n🎯 Chat mode selected: ${mode}`);
+            if (questionType) {
+                console.log(`   ├─ 📊 Question type: ${questionType}`);
+            }
             
             // Set the chat mode in GeminiService
             if (geminiService) {
                 geminiService.setChatMode(mode);
+                if (questionType) {
+                    geminiService.setQuestionType(questionType);
+                }
+                // Set client chart data if provided
+                if (natalChart || transitChart) {
+                    geminiService.setClientChartData(natalChart, transitChart);
+                }
             }
             
             // If there's an initial message, process it immediately
@@ -149,14 +159,25 @@ io.on('connection', (socket) => {
     // Handle incoming messages from client
     socket.on('user_message', async (data) => {
         try {
-            const { message, chatMode } = data;
+            const { message, chatMode, questionType, natalChart, transitChart } = data;
             
             // Update chat mode if provided
             if (chatMode && geminiService) {
                 geminiService.setChatMode(chatMode);
             }
+            // Update question type if provided
+            if (questionType && geminiService) {
+                geminiService.setQuestionType(questionType);
+            }
+            // Update client chart data if provided
+            if (geminiService && (natalChart || transitChart)) {
+                geminiService.setClientChartData(natalChart, transitChart);
+            }
             const userInfo = socket.user ? `${socket.user.email} (${socket.user.id.substring(0, 8)})` : 'Anonymous';
             console.log(`\n💬 USER [${userInfo}]: "${message}"`);
+            if (questionType) {
+                console.log(`   ├─ 📊 Question type: ${questionType}`);
+            }
 
             // Echo user message back to confirm receipt
             socket.emit('message_received', {

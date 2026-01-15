@@ -37,6 +37,11 @@ export class GeminiService {
         this.astroExpertPrompt = null;
         this.evaluatorPrompt = null;
         this.currentPrompt = null;
+        this.questionType = null;
+        this.clientChartData = {
+            natal: null,
+            transit: null
+        };
     }
 
     /**
@@ -86,6 +91,35 @@ export class GeminiService {
         } else {
             console.warn('   ├─ ⚠️  Unknown chat mode, defaulting to Astrology');
             this.currentPrompt = this.astroExpertPrompt;
+        }
+    }
+
+    /**
+     * Set question type (static or transit)
+     * @param {string} type - 'static' or 'transit'
+     */
+    setQuestionType(type) {
+        this.questionType = type;
+        if (type === 'static') {
+            console.log('   ├─ 📌 Question type: Static (natal chart)');
+        } else if (type === 'transit') {
+            console.log('   ├─ 🌊 Question type: Transit (current positions)');
+        }
+    }
+
+    /**
+     * Set client-side chart data (natal and transit)
+     * @param {Object} natalChart - Natal chart data from client
+     * @param {Object} transitChart - Transit chart data from client
+     */
+    setClientChartData(natalChart = null, transitChart = null) {
+        if (natalChart) {
+            this.clientChartData.natal = natalChart;
+            console.log('   ├─ 📊 Received natal chart from client');
+        }
+        if (transitChart) {
+            this.clientChartData.transit = transitChart;
+            console.log('   ├─ 🌊 Received transit chart from client');
         }
     }
 
@@ -156,7 +190,12 @@ export class GeminiService {
                 const profile = await this.userProfileService.getUserProfile(userId);
                 if (profile) {
                     console.log(`   ├─ ✅ Profile found: ${profile.full_name || 'Unknown'}`);
-                    const profileContext = this.userProfileService.formatProfileForAI(profile);
+                    const profileContext = this.userProfileService.formatProfileForAI(
+                        profile, 
+                        this.questionType,
+                        this.clientChartData.natal,
+                        this.clientChartData.transit
+                    );
                     fullPrompt += profileContext;
                 } else {
                     console.log(`   ├─ ℹ️  No profile data found for this user`);
