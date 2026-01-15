@@ -11,6 +11,35 @@ export class StateOrchestrator {
 
         // Map of userId -> socket
         this.userSockets = new Map();
+
+        this.waitingForGemini = new Map();
+        this.sendingBlocks = new Map();
+        this.lastAiTypingState = new Map();
+    }
+
+    _anyTimersActive(userId) {
+        const timerTypes = ['typingIdle', 'maxTyping', 'groupDelay', 'endUpdate'];
+        return timerTypes.some((t) => this.timerManager.isTimerActive(userId, t));
+    }
+
+    _computeAiTyping(userId) {
+        const waiting = !!this.waitingForGemini.get(userId);
+        const sending = !!this.sendingBlocks.get(userId);
+        const timersActive = this._anyTimersActive(userId);
+        return (waiting || sending) && !timersActive;
+    }
+
+    _emitAiTypingIfNeeded(userId) {
+        const socket = this.getSocket(userId);
+        if (!socket) return;
+
+        const nextState = this._computeAiTyping(userId);
+        const prevState = this.lastAiTypingState.get(userId);
+
+        if (prevState === nextState) return;
+
+        this.lastAiTypingState.set(userId, nextState);
+        socket.emit('ai_typing', { isTyping: nextState });
     }
 
     /**
@@ -81,6 +110,8 @@ export class StateOrchestrator {
             console.log('   ├─ 🆕 No active buffer, generating response...');
             await this.triggerUpdateBuffer(userId);
         }
+
+        this._emitAiTypingIfNeeded(userId);
     }
 
     async handleTypingStatus(userId, isTyping, socket) {
@@ -115,6 +146,8 @@ export class StateOrchestrator {
                 this.sessionManager.setUserMessagedSinceEndUpdate(userId, false);
                 await this.triggerUpdateBuffer(userId);
             });
+
+            this._emitAiTypingIfNeeded(userId);
         } else {
             // User stopped typing
             // Cancel max typing timer
@@ -136,6 +169,8 @@ export class StateOrchestrator {
             } else {
                 console.log('   ├─ ⏭️  User stopped typing (no idle timer - waiting for message)');
             }
+
+            this._emitAiTypingIfNeeded(userId);
         }
     }
 
@@ -168,6 +203,8 @@ export class StateOrchestrator {
                     console.log('   ├─ ✓ Group already complete, stopping buffer send');
                     // Immediately stop sending to prevent next group from being sent
                     this.bufferManager.stopSending(userId);
+                    this.sendingBlocks.set(userId, false);
+                    this._emitAiTypingIfNeeded(userId);
                     this._startGroupDelayFlow(userId);
                 } else {
                     console.log('   ├─ ⏳ Waiting for current group to complete...');
@@ -181,6 +218,8 @@ export class StateOrchestrator {
         } catch (error) {
             console.error('   ├─ ❌ UpdateCheck error:', error.message);
         }
+
+        this._emitAiTypingIfNeeded(userId);
     }
 
     /**
@@ -205,7 +244,11 @@ export class StateOrchestrator {
                     await this.triggerUpdateBuffer(userId);
                 });
             }
+
+            this._emitAiTypingIfNeeded(userId);
         });
+
+        this._emitAiTypingIfNeeded(userId);
     }
 
     /**
@@ -218,8 +261,12 @@ export class StateOrchestrator {
             // Cancel all timers
             this.timerManager.cancelAllTimers(userId);
 
+            this.waitingForGemini.set(userId, true);
+            this._emitAiTypingIfNeeded(userId);
+
             // Stop current buffer sending
             this.bufferManager.stopSending(userId);
+            this.sendingBlocks.set(userId, false);
 
             // Get full history
             const history = this.sessionManager.getHistory(userId);
@@ -254,6 +301,11 @@ export class StateOrchestrator {
             // Start sending new buffer
             if (socket) {
                 console.log('   └─ 📤 Starting to send blocks...\n');
+
+                this.waitingForGemini.set(userId, false);
+                this.sendingBlocks.set(userId, true);
+                this._emitAiTypingIfNeeded(userId);
+
                 await this.bufferManager.startSendingBuffer(
                     userId,
                     socket,
@@ -268,6 +320,10 @@ export class StateOrchestrator {
 
         } catch (error) {
             console.error('\n❌ UpdateBuffer error:', error.message);
+
+            this.waitingForGemini.set(userId, false);
+            this.sendingBlocks.set(userId, false);
+            this._emitAiTypingIfNeeded(userId);
 
             // Send error to client
             const socket = this.getSocket(userId);
@@ -293,6 +349,8 @@ export class StateOrchestrator {
             console.log('   ├─ 🔄 Was waiting for group, starting delay flow...');
             this.sessionManager.setWaitingForGroup(userId, false);
             // BufferManager will stop automatically on next block check
+            this.sendingBlocks.set(userId, false);
+            this._emitAiTypingIfNeeded(userId);
             this._startGroupDelayFlow(userId);
         }
     }
@@ -302,6 +360,10 @@ export class StateOrchestrator {
      */
     _handleBufferComplete(userId) {
         console.log('\n✅ All blocks sent');
+
+        this.waitingForGemini.set(userId, false);
+        this.sendingBlocks.set(userId, false);
+        this._emitAiTypingIfNeeded(userId);
 
         // Notify client that AI has completed
         const socket = this.getSocket(userId);
@@ -329,6 +391,8 @@ export class StateOrchestrator {
                     this.sessionManager.setUserMessagedSinceEndUpdate(userId, false);
                     await this.triggerUpdateBuffer(userId);
                 });
+
+                this._emitAiTypingIfNeeded(userId);
             } else {
                 console.log('   └─ ⏭️  Skipping EndUpdate timer (no user messages since last EndUpdate)\n');
             }
@@ -346,6 +410,10 @@ export class StateOrchestrator {
 
         // Stop buffer sending
         this.bufferManager.stopSending(userId);
+
+        this.waitingForGemini.set(userId, false);
+        this.sendingBlocks.set(userId, false);
+        this._emitAiTypingIfNeeded(userId);
 
         // Mark buffer as complete to prevent further sending
         this.sessionManager.markBufferComplete(userId);
@@ -373,6 +441,10 @@ export class StateOrchestrator {
         
         console.log(`   ├─ 🧹 Removing socket reference...`);
         this.userSockets.delete(userId);
+
+        this.waitingForGemini.delete(userId);
+        this.sendingBlocks.delete(userId);
+        this.lastAiTypingState.delete(userId);
         
         console.log(`   ├─ 📊 Active users remaining: ${this.userSockets.size}`);
     }
