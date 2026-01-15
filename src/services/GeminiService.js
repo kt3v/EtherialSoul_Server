@@ -32,6 +32,7 @@ export class GeminiService {
             },
         });
 
+        this.baseFormattingRules = null;
         this.mainPrompt = null;
         this.evaluatorPrompt = null;
     }
@@ -41,9 +42,16 @@ export class GeminiService {
      */
     async loadPrompts() {
         try {
+            // Load base formatting rules (universal for all prompts)
+            const baseRulesPath = path.join(process.cwd(), 'src', 'config', 'base_formatting_rules.txt');
+            this.baseFormattingRules = await fs.readFile(baseRulesPath, 'utf-8');
+
             // Load main prompt (using prompt2.txt with astrology support)
             const promptPath = path.join(process.cwd(), 'src', 'config', 'prompt2.txt');
-            this.mainPrompt = await fs.readFile(promptPath, 'utf-8');
+            const contextPrompt = await fs.readFile(promptPath, 'utf-8');
+            
+            // Combine base rules with context-specific prompt
+            this.mainPrompt = this.baseFormattingRules + '\n\n' + contextPrompt;
 
             // Load evaluator prompt
             const evaluatorPath = path.join(process.cwd(), 'src', 'config', 'evaluator_prompt.txt');
