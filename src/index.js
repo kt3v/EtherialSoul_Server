@@ -20,6 +20,8 @@ import { StateOrchestrator } from './managers/StateOrchestrator.js';
 import { socketAuthMiddleware } from './middleware/authMiddleware.js';
 import { clearTxtLogs } from './utils/logsCleanup.js';
 
+const devMode = String(process.env.DEV_MODE || '').toLowerCase() === 'true';
+
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -61,7 +63,7 @@ async function initializeServices() {
 
         // Initialize managers
         sessionManager = new UserSessionManager();
-        bufferManager = new BufferManager(sessionManager);
+        bufferManager = new BufferManager(sessionManager, { devMode });
         timerManager = new TimerManager();
 
         // Initialize orchestrator

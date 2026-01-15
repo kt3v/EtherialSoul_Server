@@ -3,8 +3,9 @@
  * Sends blocks one-by-one with typingTime delays
  */
 export class BufferManager {
-    constructor(sessionManager) {
+    constructor(sessionManager, { devMode = false } = {}) {
         this.sessionManager = sessionManager;
+        this.devMode = devMode;
         // Map of userId -> timeout ID for current block sending
         this.sendingTimeouts = new Map();
         // Map of userId -> socket for validation
@@ -100,7 +101,11 @@ export class BufferManager {
         }
 
         // Schedule next block
-        const delay = Math.max(block.typingTime * 1000, 1000); // Convert to ms, minimum 1s
+        const minDelayMs = 1000;
+        let delay = Math.max(block.typingTime * 1000, minDelayMs);
+        if (this.devMode) {
+            delay = Math.max(Math.floor(delay / 2), Math.floor(minDelayMs / 2));
+        }
 
         const timeoutId = setTimeout(() => {
             this._sendNextBlock(userId, socket, onGroupComplete, onBufferComplete);
