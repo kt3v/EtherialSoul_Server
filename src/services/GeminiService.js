@@ -33,8 +33,10 @@ export class GeminiService {
         });
 
         this.baseFormattingRules = null;
-        this.mainPrompt = null;
+        this.tarotExpertPrompt = null;
+        this.astroExpertPrompt = null;
         this.evaluatorPrompt = null;
+        this.currentPrompt = null;
     }
 
     /**
@@ -46,21 +48,44 @@ export class GeminiService {
             const baseRulesPath = path.join(process.cwd(), 'src', 'config', 'base_formatting_rules.txt');
             this.baseFormattingRules = await fs.readFile(baseRulesPath, 'utf-8');
 
-            // Load main prompt (using prompt2.txt with astrology support)
-            const promptPath = path.join(process.cwd(), 'src', 'config', 'prompt2.txt');
-            const contextPrompt = await fs.readFile(promptPath, 'utf-8');
-            
-            // Combine base rules with context-specific prompt
-            this.mainPrompt = this.baseFormattingRules + '\n\n' + contextPrompt;
+            // Load Tarot Expert prompt
+            const tarotPath = path.join(process.cwd(), 'src', 'config', 'tarot_expert.txt');
+            const tarotContext = await fs.readFile(tarotPath, 'utf-8');
+            this.tarotExpertPrompt = this.baseFormattingRules + '\n\n' + tarotContext;
+
+            // Load Astrology Expert prompt
+            const astroPath = path.join(process.cwd(), 'src', 'config', 'astro_expert.txt');
+            const astroContext = await fs.readFile(astroPath, 'utf-8');
+            this.astroExpertPrompt = this.baseFormattingRules + '\n\n' + astroContext;
 
             // Load evaluator prompt
             const evaluatorPath = path.join(process.cwd(), 'src', 'config', 'evaluator_prompt.txt');
             this.evaluatorPrompt = await fs.readFile(evaluatorPath, 'utf-8');
 
+            // Default to astro mode
+            this.currentPrompt = this.astroExpertPrompt;
+
             return true;
         } catch (error) {
             console.error('❌ Error loading prompts:', error);
             throw error;
+        }
+    }
+
+    /**
+     * Set chat mode (tarot or astro)
+     * @param {string} mode - 'tarot' or 'astro'
+     */
+    setChatMode(mode) {
+        if (mode === 'tarot') {
+            this.currentPrompt = this.tarotExpertPrompt;
+            console.log('   ├─ 🔮 Chat mode: Tarot Expert');
+        } else if (mode === 'astro') {
+            this.currentPrompt = this.astroExpertPrompt;
+            console.log('   ├─ ✨ Chat mode: Astrology Expert');
+        } else {
+            console.warn('   ├─ ⚠️  Unknown chat mode, defaulting to Astrology');
+            this.currentPrompt = this.astroExpertPrompt;
         }
     }
 
@@ -123,7 +148,7 @@ export class GeminiService {
     async updateBuffer(history, previousBuffer = null, userId = null) {
         try {
             // Build the full prompt with system instruction and history
-            let fullPrompt = this.mainPrompt + '\n\n';
+            let fullPrompt = this.currentPrompt + '\n\n';
 
             // Add user profile data if available
             if (userId && this.userProfileService) {

@@ -115,10 +115,46 @@ io.on('connection', (socket) => {
     // Register socket with orchestrator immediately
     orchestrator.registerSocket(userId, socket);
 
+    // Handle chat mode selection
+    socket.on('set_chat_mode', (data) => {
+        try {
+            const { mode, initialMessage } = data;
+            console.log(`\n🎯 Chat mode selected: ${mode}`);
+            
+            // Set the chat mode in GeminiService
+            if (geminiService) {
+                geminiService.setChatMode(mode);
+            }
+            
+            // If there's an initial message, process it immediately
+            if (initialMessage) {
+                console.log(`   ├─ 📨 Initial message: "${initialMessage}"`);
+                socket.emit('message_received', {
+                    id: Date.now(),
+                    text: initialMessage,
+                    sender: 'user',
+                    timestamp: new Date().toISOString()
+                });
+                
+                // Process the initial message
+                orchestrator.handleUserMessage(userId, initialMessage, socket).catch(error => {
+                    console.error('❌ Error processing initial message:', error.message);
+                });
+            }
+        } catch (error) {
+            console.error('❌ Error setting chat mode:', error.message);
+        }
+    });
+
     // Handle incoming messages from client
     socket.on('user_message', async (data) => {
         try {
-            const { message } = data;
+            const { message, chatMode } = data;
+            
+            // Update chat mode if provided
+            if (chatMode && geminiService) {
+                geminiService.setChatMode(chatMode);
+            }
             const userInfo = socket.user ? `${socket.user.email} (${socket.user.id.substring(0, 8)})` : 'Anonymous';
             console.log(`\n💬 USER [${userInfo}]: "${message}"`);
 
@@ -167,6 +203,24 @@ io.on('connection', (socket) => {
 
         } catch (error) {
             console.error('❌ Error stopping AI response:', error.message);
+        }
+    });
+
+    // Handle end chat request
+    socket.on('end_chat', async (data) => {
+        try {
+            console.log(`\n🔚 END CHAT REQUEST [${userId.substring(0, 8)}]`);
+
+            // Stop any ongoing AI response
+            orchestrator.stopAIResponse(userId, socket);
+
+            // Clean up all session state
+            orchestrator.cleanup(userId);
+
+            console.log(`   ✅ Chat session ended and cleaned up`);
+
+        } catch (error) {
+            console.error('❌ Error ending chat:', error.message);
         }
     });
 
