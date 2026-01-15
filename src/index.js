@@ -1,17 +1,24 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
+// Diagnostic logging
+console.log('🔧 Environment check:');
+console.log(`   SUPABASE_URL: ${process.env.SUPABASE_URL ? 'SET' : 'NOT SET'}`);
+console.log(`   SUPABASE_JWT_SECRET: ${process.env.SUPABASE_JWT_SECRET ? 'SET (length: ' + process.env.SUPABASE_JWT_SECRET.length + ')' : 'NOT SET'}`);
+console.log(`   SUPABASE_ANON_KEY: ${process.env.SUPABASE_ANON_KEY ? 'SET' : 'NOT SET'}`);
+
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { UserSessionManager } from './managers/UserSessionManager.js';
 import { BufferManager } from './managers/BufferManager.js';
 import { TimerManager } from './managers/TimerManager.js';
 import { GeminiService } from './services/GeminiService.js';
+import { UserProfileService } from './services/UserProfileService.js';
 import { StateOrchestrator } from './managers/StateOrchestrator.js';
 import { socketAuthMiddleware } from './middleware/authMiddleware.js';
 import { clearTxtLogs } from './utils/logsCleanup.js';
-
-dotenv.config();
 
 const app = express();
 const httpServer = createServer(app);
@@ -32,6 +39,7 @@ app.use(express.json());
 
 // Initialize services
 let geminiService = null;
+let userProfileService = null;
 let sessionManager = null;
 let bufferManager = null;
 let timerManager = null;
@@ -44,8 +52,11 @@ async function initializeServices() {
             return false;
         }
 
-        // Initialize Gemini service
-        geminiService = new GeminiService(process.env.GEMINI_API_KEY);
+        // Initialize User Profile service
+        userProfileService = new UserProfileService();
+
+        // Initialize Gemini service with user profile service
+        geminiService = new GeminiService(process.env.GEMINI_API_KEY, userProfileService);
         await geminiService.loadPrompts();
 
         // Initialize managers
@@ -86,10 +97,12 @@ io.on('connection', (socket) => {
     
     console.log(`\n🔌 Client connected: ${socket.id}`);
     if (socket.authenticated && socket.user) {
-        console.log(`   👤 Authenticated as: ${socket.user.email}`);
+        console.log(`   ✅ Authenticated as: ${socket.user.email}`);
         console.log(`   🆔 User DB ID: ${socket.user.id}`);
+        console.log(`   📊 Profile will be loaded for AI context`);
     } else {
-        console.log(`   👤 Anonymous user`);
+        console.log(`   ⚠️  Anonymous user (no auth token)`);
+        console.log(`   ℹ️  AI will respond without user profile data`);
     }
 
     if (!orchestrator) {
@@ -106,7 +119,8 @@ io.on('connection', (socket) => {
     socket.on('user_message', async (data) => {
         try {
             const { message } = data;
-            console.log(`\n💬 USER [${userId.substring(0, 8)}]: "${message}"`);
+            const userInfo = socket.user ? `${socket.user.email} (${socket.user.id.substring(0, 8)})` : 'Anonymous';
+            console.log(`\n💬 USER [${userInfo}]: "${message}"`);
 
             // Echo user message back to confirm receipt
             socket.emit('message_received', {

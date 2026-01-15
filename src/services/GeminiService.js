@@ -7,8 +7,9 @@ import path from 'path';
  * Manages UpdateBuffer and UpdateCheck functions
  */
 export class GeminiService {
-    constructor(apiKey) {
+    constructor(apiKey, userProfileService = null) {
         this.genAI = new GoogleGenerativeAI(apiKey);
+        this.userProfileService = userProfileService;
 
         // Initialize models
         this.mainModel = this.genAI.getGenerativeModel({
@@ -40,8 +41,8 @@ export class GeminiService {
      */
     async loadPrompts() {
         try {
-            // Load main prompt
-            const promptPath = path.join(process.cwd(), 'src', 'config', 'prompt.txt');
+            // Load main prompt (using prompt2.txt with astrology support)
+            const promptPath = path.join(process.cwd(), 'src', 'config', 'prompt2.txt');
             this.mainPrompt = await fs.readFile(promptPath, 'utf-8');
 
             // Load evaluator prompt
@@ -107,11 +108,34 @@ export class GeminiService {
 
     /**
      * UpdateBuffer - Generate new buffer from conversation history
+     * @param {Array} history - Conversation history
+     * @param {Array} previousBuffer - Previous buffer blocks
+     * @param {string} userId - User ID for fetching profile data
      */
-    async updateBuffer(history, previousBuffer = null) {
+    async updateBuffer(history, previousBuffer = null, userId = null) {
         try {
             // Build the full prompt with system instruction and history
             let fullPrompt = this.mainPrompt + '\n\n';
+
+            // Add user profile data if available
+            if (userId && this.userProfileService) {
+                console.log(`   ├─ 👤 Fetching profile for user: ${userId.substring(0, 8)}...`);
+                const profile = await this.userProfileService.getUserProfile(userId);
+                if (profile) {
+                    console.log(`   ├─ ✅ Profile found: ${profile.full_name || 'Unknown'}`);
+                    const profileContext = this.userProfileService.formatProfileForAI(profile);
+                    fullPrompt += profileContext;
+                } else {
+                    console.log(`   ├─ ℹ️  No profile data found for this user`);
+                }
+            } else {
+                if (!userId) {
+                    console.log(`   ├─ ℹ️  No userId provided (anonymous user)`);
+                }
+                if (!this.userProfileService) {
+                    console.log(`   ├─ ⚠️  UserProfileService not initialized`);
+                }
+            }
 
             // Add conversation history
             if (history && history.length > 0) {

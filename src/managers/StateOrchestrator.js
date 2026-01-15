@@ -229,8 +229,18 @@ export class StateOrchestrator {
             const currentIndex = session.buffer.currentIndex;
             const pendingBlocks = session.buffer.blocks.slice(currentIndex);
 
-            // Call UpdateBuffer with only pending blocks
-            const newBlocks = await this.geminiService.updateBuffer(history, pendingBlocks);
+            // Get socket and authenticated user ID (if available)
+            const socket = this.getSocket(userId);
+            const authenticatedUserId = socket?.user?.id || null;
+
+            if (authenticatedUserId) {
+                console.log(`   ├─ 🔑 Authenticated user ID: ${authenticatedUserId.substring(0, 8)}...`);
+            } else {
+                console.log(`   ├─ ⚠️  No authenticated user ID (anonymous session)`);
+            }
+
+            // Call UpdateBuffer with only pending blocks and user ID for profile data
+            const newBlocks = await this.geminiService.updateBuffer(history, pendingBlocks, authenticatedUserId);
 
             console.log(`   ├─ ✅ Generated ${newBlocks.length} blocks`);
 
@@ -242,7 +252,6 @@ export class StateOrchestrator {
             this.sessionManager.setWaitingForGroup(userId, false);
 
             // Start sending new buffer
-            const socket = this.getSocket(userId);
             if (socket) {
                 console.log('   └─ 📤 Starting to send blocks...\n');
                 await this.bufferManager.startSendingBuffer(
