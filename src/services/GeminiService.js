@@ -11,6 +11,14 @@ export class GeminiService {
         this.genAI = new GoogleGenerativeAI(apiKey);
         this.userProfileService = userProfileService;
 
+        if (!process.env.MAIN_MODEL) {
+            throw new Error('MAIN_MODEL is not set (required).');
+        }
+
+        if (!process.env.EVALUATOR_MODEL) {
+            throw new Error('EVALUATOR_MODEL is not set (required).');
+        }
+
         // Initialize models
         this.mainModel = this.genAI.getGenerativeModel({
             model: process.env.MAIN_MODEL,
@@ -43,6 +51,69 @@ export class GeminiService {
             natal: null,
             transit: null
         };
+    }
+
+    async _sleep(ms) {
+        await new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    _isRetryableError(error) {
+        const msg = (error?.message || '').toLowerCase();
+        return (
+            msg.includes('overloaded') ||
+            msg.includes('timeout') ||
+            msg.includes('temporarily') ||
+            msg.includes('unavailable') ||
+            msg.includes('rate limit') ||
+            msg.includes('429') ||
+            msg.includes('503') ||
+            msg.includes('502') ||
+            msg.includes('504')
+        );
+    }
+
+    async _generateContentWithRetry(model, prompt, { maxAttempts = 3, baseDelayMs = 800 } = {}) {
+        let lastError;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                const result = await model.generateContent(prompt);
+                const response = await result.response;
+                const text = response.text();
+
+                const isEmpty = !text || text.trim().length === 0;
+                const promptFeedback = response?.promptFeedback;
+                const isBlocked = Boolean(promptFeedback?.blockReason);
+
+                if (isEmpty && !isBlocked) {
+                    const err = new Error('Gemini returned empty response');
+                    err.response = response;
+                    throw err;
+                }
+
+                return { response, text };
+            } catch (error) {
+                lastError = error;
+
+                const response = error?.response;
+                const promptFeedback = response?.promptFeedback;
+                const isBlocked = Boolean(promptFeedback?.blockReason);
+
+                if (isBlocked) {
+                    throw error;
+                }
+
+                const retryable = this._isRetryableError(error) || (error?.message || '').includes('empty response');
+                if (!retryable || attempt === maxAttempts) {
+                    throw error;
+                }
+
+                const delay = Math.floor(baseDelayMs * Math.pow(2, attempt - 1) + Math.random() * 250);
+                console.warn(`   ├─ 🔁 Gemini retry ${attempt}/${maxAttempts} in ${delay}ms (${error.message})`);
+                await this._sleep(delay);
+            }
+        }
+
+        throw lastError || new Error('Gemini request failed');
     }
 
     /**
@@ -235,14 +306,57 @@ export class GeminiService {
             // Save context to file for debugging
             await this._saveContextToFile(fullPrompt, history, previousBuffer);
 
-            // Generate response
-            const result = await this.mainModel.generateContent(fullPrompt);
-            const response = await result.response;
-            const text = response.text();
+            const { response, text } = await this._generateContentWithRetry(this.mainModel, fullPrompt, {
+                maxAttempts: Number(process.env.GEMINI_MAX_RETRIES || 3),
+                baseDelayMs: Number(process.env.GEMINI_RETRY_BASE_DELAY_MS || 800),
+            });
 
             // Log raw response for debugging
             console.log('   ├─ 📄 Raw response length:', text.length, 'chars');
             console.log('   ├─ 📄 Raw response preview:', text.substring(0, 200));
+
+            if (!text || text.trim().length === 0) {
+                const candidatesCount = Array.isArray(response?.candidates) ? response.candidates.length : 0;
+                const finishReasons = Array.isArray(response?.candidates)
+                    ? response.candidates.map(c => c?.finishReason).filter(Boolean)
+                    : [];
+                const promptFeedback = response?.promptFeedback;
+
+                console.error('   ├─ ❌ Gemini returned empty text response');
+                console.error('   ├─ 📊 candidates:', candidatesCount);
+                if (finishReasons.length > 0) {
+                    console.error('   ├─ 📊 finishReasons:', finishReasons.join(', '));
+                }
+                if (promptFeedback) {
+                    console.error('   ├─ 📊 promptFeedback:', JSON.stringify(promptFeedback));
+                }
+
+                try {
+                    const projectRoot = process.cwd();
+                    const logsDir = path.join(projectRoot, 'logs');
+                    await fs.mkdir(logsDir, { recursive: true });
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                    const errorFile = path.join(logsDir, `empty_response_${timestamp}.json`);
+                    await fs.writeFile(
+                        errorFile,
+                        JSON.stringify(
+                            {
+                                error: 'Empty text response from Gemini',
+                                candidates: response?.candidates || null,
+                                promptFeedback: response?.promptFeedback || null,
+                            },
+                            null,
+                            2
+                        ),
+                        'utf-8'
+                    );
+                    console.error('   ├─ 💾 Empty response details saved to:', errorFile);
+                } catch (saveError) {
+                    console.error('   ├─ ⚠️  Could not save empty response details:', saveError.message);
+                }
+
+                throw new Error('Gemini returned empty response (no JSON to parse)');
+            }
 
             // Parse JSON response
             let parsedResponse;
@@ -278,7 +392,10 @@ export class GeminiService {
                 // Save failed response to file for debugging
                 try {
                     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                    const errorFile = path.join(process.cwd(), 'logs', `parse_error_${timestamp}.txt`);
+                    const projectRoot = process.cwd();
+                    const logsDir = path.join(projectRoot, 'logs');
+                    await fs.mkdir(logsDir, { recursive: true });
+                    const errorFile = path.join(logsDir, `parse_error_${timestamp}.txt`);
                     await fs.writeFile(errorFile, `=== PARSE ERROR ===\n\n${parseError.message}\n\n=== RAW RESPONSE ===\n\n${text}`, 'utf-8');
                     console.error('   ├─ 💾 Error response saved to:', errorFile);
                 } catch (saveError) {
@@ -356,13 +473,14 @@ ${pendingText}
 USER MESSAGES:
 ${userMessages}`;
 
-            // Generate response
-            const result = await this.evaluatorModel.generateContent(checkPrompt);
-            const response = await result.response;
-            const text = response.text().trim().toUpperCase();
+            const { text } = await this._generateContentWithRetry(this.evaluatorModel, checkPrompt, {
+                maxAttempts: Number(process.env.GEMINI_MAX_RETRIES || 3),
+                baseDelayMs: Number(process.env.GEMINI_RETRY_BASE_DELAY_MS || 800),
+            });
+            const normalized = (text || '').trim().toUpperCase();
 
             // Parse YES/NO
-            const needsUpdate = text.includes('YES');
+            const needsUpdate = normalized.includes('YES');
 
             return needsUpdate;
 
@@ -391,12 +509,13 @@ ${userMessages}`;
             fullPrompt += '\n\n=== YOUR TASK ===\n\n';
             fullPrompt += 'Based on the current planetary positions above, generate a daily astrological forecast following the rules specified in the prompt. Remember: 3-4 sentences, practical, grounded, specific.';
 
-            // Generate response using main model
-            const result = await this.mainModel.generateContent(fullPrompt);
-            const response = await result.response;
-            const text = response.text().trim();
+            const { text } = await this._generateContentWithRetry(this.mainModel, fullPrompt, {
+                maxAttempts: Number(process.env.GEMINI_MAX_RETRIES || 3),
+                baseDelayMs: Number(process.env.GEMINI_RETRY_BASE_DELAY_MS || 800),
+            });
+            const normalized = (text || '').trim();
 
-            return text;
+            return normalized;
 
         } catch (error) {
             console.error('   ├─ ❌ GenerateDailyForecast error:', error.message);
