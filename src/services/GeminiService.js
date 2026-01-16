@@ -13,7 +13,7 @@ export class GeminiService {
 
         // Initialize models
         this.mainModel = this.genAI.getGenerativeModel({
-            model: process.env.MAIN_MODEL || 'gemini-2.0-flash-exp',
+            model: process.env.MAIN_MODEL,
             generationConfig: {
                 temperature: 0.9,
                 topP: 0.95,
@@ -23,7 +23,7 @@ export class GeminiService {
         });
 
         this.evaluatorModel = this.genAI.getGenerativeModel({
-            model: process.env.EVALUATOR_MODEL || 'gemini-2.0-flash-thinking-exp-01-21',
+            model: process.env.EVALUATOR_MODEL,
             generationConfig: {
                 temperature: 0.3,
                 topP: 0.95,
@@ -240,15 +240,51 @@ export class GeminiService {
             const response = await result.response;
             const text = response.text();
 
+            // Log raw response for debugging
+            console.log('   ├─ 📄 Raw response length:', text.length, 'chars');
+            console.log('   ├─ 📄 Raw response preview:', text.substring(0, 200));
+
             // Parse JSON response
             let parsedResponse;
             try {
-                // Try to extract JSON from markdown code blocks if present
+                // Try multiple extraction strategies
+                let jsonText = text.trim();
+                
+                // Strategy 1: Extract from markdown code blocks (```json or ```)
                 const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/```\s*([\s\S]*?)\s*```/);
-                const jsonText = jsonMatch ? jsonMatch[1] : text;
-                parsedResponse = JSON.parse(jsonText.trim());
+                if (jsonMatch) {
+                    jsonText = jsonMatch[1].trim();
+                    console.log('   ├─ ✅ Extracted JSON from code block');
+                }
+                
+                // Strategy 2: Find JSON object boundaries { ... }
+                if (!jsonMatch) {
+                    const firstBrace = text.indexOf('{');
+                    const lastBrace = text.lastIndexOf('}');
+                    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                        jsonText = text.substring(firstBrace, lastBrace + 1);
+                        console.log('   ├─ ✅ Extracted JSON by braces');
+                    }
+                }
+                
+                // Try to parse
+                parsedResponse = JSON.parse(jsonText);
+                console.log('   ├─ ✅ JSON parsed successfully');
+                
             } catch (parseError) {
                 console.error('   ├─ ❌ JSON parse error:', parseError.message);
+                console.error('   ├─ 📄 Failed to parse text:', text.substring(0, 500));
+                
+                // Save failed response to file for debugging
+                try {
+                    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                    const errorFile = path.join(process.cwd(), 'logs', `parse_error_${timestamp}.txt`);
+                    await fs.writeFile(errorFile, `=== PARSE ERROR ===\n\n${parseError.message}\n\n=== RAW RESPONSE ===\n\n${text}`, 'utf-8');
+                    console.error('   ├─ 💾 Error response saved to:', errorFile);
+                } catch (saveError) {
+                    console.error('   ├─ ⚠️  Could not save error file:', saveError.message);
+                }
+                
                 throw new Error('Failed to parse JSON response from Gemini');
             }
 
