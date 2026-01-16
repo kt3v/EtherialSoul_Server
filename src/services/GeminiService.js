@@ -36,6 +36,7 @@ export class GeminiService {
         this.tarotExpertPrompt = null;
         this.astroExpertPrompt = null;
         this.evaluatorPrompt = null;
+        this.dailyForecastPrompt = null;
         this.currentPrompt = null;
         this.questionType = null;
         this.clientChartData = {
@@ -66,6 +67,10 @@ export class GeminiService {
             // Load evaluator prompt
             const evaluatorPath = path.join(process.cwd(), 'src', 'config', 'evaluator_prompt.txt');
             this.evaluatorPrompt = await fs.readFile(evaluatorPath, 'utf-8');
+
+            // Load daily forecast prompt
+            const dailyForecastPath = path.join(process.cwd(), 'src', 'config', 'daily_forecast_prompt.txt');
+            this.dailyForecastPrompt = await fs.readFile(dailyForecastPath, 'utf-8');
 
             // Default to astro mode
             this.currentPrompt = this.astroExpertPrompt;
@@ -329,6 +334,37 @@ ${userMessages}`;
             console.error('   ├─ ❌ UpdateCheck error:', error.message);
             // Default to NO on error to avoid infinite loops
             return false;
+        }
+    }
+
+    /**
+     * Generate daily astrological forecast based on current planetary positions
+     * @param {Object} transitChart - Current planetary positions from client
+     * @returns {string} Daily forecast text (3-4 sentences)
+     */
+    async generateDailyForecast(transitChart) {
+        try {
+            if (!transitChart) {
+                throw new Error('Transit chart data is required for daily forecast');
+            }
+
+            // Build the prompt with transit data
+            let fullPrompt = this.dailyForecastPrompt + '\n\n';
+            fullPrompt += '=== CURRENT PLANETARY POSITIONS ===\n\n';
+            fullPrompt += JSON.stringify(transitChart, null, 2);
+            fullPrompt += '\n\n=== YOUR TASK ===\n\n';
+            fullPrompt += 'Based on the current planetary positions above, generate a daily astrological forecast following the rules specified in the prompt. Remember: 3-4 sentences, practical, grounded, specific.';
+
+            // Generate response using main model
+            const result = await this.mainModel.generateContent(fullPrompt);
+            const response = await result.response;
+            const text = response.text().trim();
+
+            return text;
+
+        } catch (error) {
+            console.error('   ├─ ❌ GenerateDailyForecast error:', error.message);
+            throw error;
         }
     }
 }

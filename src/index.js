@@ -92,6 +92,44 @@ app.get('/health', (req, res) => {
     });
 });
 
+app.post('/daily-forecast', async (req, res) => {
+    try {
+        if (!geminiService) {
+            return res.status(503).json({
+                error: 'AI service not available'
+            });
+        }
+
+        const { transitChart } = req.body;
+
+        if (!transitChart) {
+            return res.status(400).json({
+                error: 'Transit chart data is required'
+            });
+        }
+
+        console.log('\n🌅 Daily Forecast Request');
+        console.log(`   ├─ Timestamp: ${new Date().toISOString()}`);
+
+        const forecast = await geminiService.generateDailyForecast(transitChart);
+
+        console.log(`   ├─ ✅ Forecast generated`);
+        console.log(`   └─ Preview: ${forecast.substring(0, 80)}...`);
+
+        res.json({
+            forecast,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('❌ Error generating daily forecast:', error.message);
+        res.status(500).json({
+            error: 'Failed to generate daily forecast',
+            message: error.message
+        });
+    }
+});
+
 // WebSocket connection handling
 io.on('connection', (socket) => {
     // Use socket.id as the unique identifier for this connection
